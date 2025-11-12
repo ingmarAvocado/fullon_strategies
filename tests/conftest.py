@@ -7,6 +7,7 @@ Follows fullon_ohlcv testing patterns:
 - Factory pattern for test data
 """
 import os
+import uuid
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -142,7 +143,8 @@ async def test_db() -> AsyncGenerator[str, None]:
     # Create unique database name
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     worker_id = os.getenv("PYTEST_XDIST_WORKER", "master")
-    db_name = f"test_strategies_{timestamp}_{worker_id}"
+    unique_id = str(uuid.uuid4())[:8]
+    db_name = f"test_strategies_{timestamp}_{worker_id}_{unique_id}"
 
     # Create database
     success = await create_test_database(db_name, DB_CONFIG)
@@ -179,23 +181,56 @@ async def db_context(test_db: str) -> AsyncGenerator[DatabaseContext, None]:
         yield db
 
 
-# Example factory fixtures (to be implemented)
+# Factory fixtures for creating test data
 @pytest.fixture
-def strategy_factory():
-    """Factory for creating Strategy ORM objects."""
-    # TODO: Implement StrategyFactory
-    pass
+def strategy_factory(db_context):
+    """Factory for creating Strategy ORM objects in the test database."""
+    async def _create_strategy(**kwargs):
+        # Create a minimal Strategy with defaults
+        defaults = {
+            "bot_id": 1,
+            "user_id": 1,
+            "class_name": "TestStrategy",
+            "name": "Test Strategy",
+            "status": "active",
+        }
+        defaults.update(kwargs)
+        strategy = Strategy(**defaults)
+        return await db_context.strategies.save(strategy)
+    return _create_strategy
 
 
 @pytest.fixture
-def feed_factory():
-    """Factory for creating Feed ORM objects."""
-    # TODO: Implement FeedFactory
-    pass
+def feed_factory(db_context):
+    """Factory for creating Feed ORM objects in the test database."""
+    async def _create_feed(**kwargs):
+        # Create a minimal Feed with defaults
+        defaults = {
+            "strategy_id": 1,
+            "symbol": "BTC/USDT",
+            "exchange": "kraken",
+            "period": "1m",
+            "compression": 1,
+            "order": 1,
+        }
+        defaults.update(kwargs)
+        feed = Feed(**defaults)
+        return await db_context.feeds.save(feed)
+    return _create_feed
 
 
 @pytest.fixture
-def symbol_factory():
-    """Factory for creating Symbol ORM objects."""
-    # TODO: Implement SymbolFactory
-    pass
+def symbol_factory(db_context):
+    """Factory for creating Symbol ORM objects in the test database."""
+    async def _create_symbol(**kwargs):
+        # Create a minimal Symbol with defaults
+        defaults = {
+            "symbol": "BTC/USDT",
+            "exchange": "kraken",
+            "base_asset": "BTC",
+            "quote_asset": "USDT",
+        }
+        defaults.update(kwargs)
+        symbol = Symbol(**defaults)
+        return await db_context.symbols.save(symbol)
+    return _create_symbol

@@ -29,7 +29,10 @@ class FeedFactory(BaseFactory):
             **kwargs
         )
         feed.ex_id = ex_id
-        
+
+        # NOTE: Feed has no dedicated repository (no FeedRepository in fullon_orm).
+        # Feeds are relationship entities managed through Strategy, so we use
+        # direct session manipulation for test data creation.
         db.session.add(feed)
         await db.session.flush()
         await db.session.refresh(feed)

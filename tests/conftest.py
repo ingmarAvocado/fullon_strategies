@@ -6,8 +6,25 @@ Follows fullon_ohlcv testing patterns:
 - Real PostgreSQL/TimescaleDB (no mocking)
 - Factory pattern for test data
 """
-import asyncio
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env configuration at module level (before any other imports)
+env_path = Path(__file__).parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+    print(f"Loaded .env configuration from {env_path}")
+else:
+    # Fallback to .env.example for CI/CD
+    example_path = Path(__file__).parent.parent / ".env.example"
+    if example_path.exists():
+        load_dotenv(example_path)
+        print(f"Warning: Using .env.example - create .env for local development")
+    else:
+        print("Warning: No .env or .env.example found")
+
+import asyncio
 import pytest
 from datetime import datetime
 from typing import AsyncGenerator
@@ -20,6 +37,14 @@ from fullon_orm.models import Strategy, Feed, Symbol
 from fullon_log import get_component_logger
 
 logger = get_component_logger("fullon.strategies.tests")
+
+# Log that environment was loaded successfully
+if env_path.exists():
+    logger.info(f"Loaded .env configuration for tests from {env_path}")
+elif example_path and example_path.exists():
+    logger.warning("Using .env.example - create .env for local development")
+else:
+    logger.warning("No .env configuration found")
 
 
 # Database configuration from environment

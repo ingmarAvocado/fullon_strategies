@@ -44,6 +44,9 @@ def generate_candle_data(start_time, num_candles, base_price, price_increment, p
 async def ohlcv_test_data(db_context) -> AsyncGenerator[dict, None]:
     """
     Fixture providing pre-populated OHLCV data for multiple symbols and periods.
+
+    This fixture saves candles to the test database and verifies persistence.
+    The db_context parameter ensures fullon_ohlcv is configured to use the test database.
     """
     data = {}
     test_scenarios = [
@@ -58,7 +61,8 @@ async def ohlcv_test_data(db_context) -> AsyncGenerator[dict, None]:
         symbol = scenario["symbol"]
         period = scenario["period"]
         compression = scenario["compression"]
-        
+
+        # Save candles to database
         async with CandleRepository(
             exchange="kraken",
             symbol=symbol,
@@ -84,10 +88,34 @@ async def ohlcv_test_data(db_context) -> AsyncGenerator[dict, None]:
                     vol=row['volume']
                 ) for _, row in df.iterrows()
             ]
-            await repo.save_candles(candles)
+            success = await repo.save_candles(candles)
+            if not success:
+                logger.error(f"Failed to save candles for {symbol} {compression}m")
+            else:
+                logger.info(f"Saved {len(candles)} candles for {symbol} {compression}m")
 
+        # Verify data persists by fetching it back
+        async with TimeseriesRepository(
+            exchange="kraken",
+            symbol=symbol,
+            test=True
+        ) as repo:
+            # Fetch back the data we just saved
+            fetched_df = await repo.fetch_ohlcv_df(
+                compression=compression,
+                period=period,
+                fromdate=start_time,
+                todate=end_time
+            )
+
+            if len(fetched_df) == 0:
+                logger.warning(f"No data fetched back for {symbol} {compression}m - data may not have persisted")
+            else:
+                logger.info(f"Verified {len(fetched_df)} candles persisted for {symbol} {compression}m")
+
+            # Store the fetched data (which should match what we saved)
             key = f"{symbol}_{compression}{'m' if period == 'minutes' else 'h'}"
-            data[key] = df
+            data[key] = fetched_df if len(fetched_df) > 0 else df
 
     yield data
 

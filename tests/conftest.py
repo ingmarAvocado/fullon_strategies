@@ -354,7 +354,7 @@ async def drop_test_database(db_name: str, db_config: dict) -> bool:
 
 
 @pytest_asyncio.fixture
-async def db_context(request):
+async def db_context(request, monkeypatch):
     """Create a DatabaseContext-like wrapper for testing with proper isolation.
 
     This provides:
@@ -362,6 +362,7 @@ async def db_context(request):
     - Automatic rollback after each test
     - Same interface as fullon_orm.DatabaseContext
     - Access to all repositories (strategies, feeds, symbols, etc.)
+    - Configures fullon_ohlcv to use the same test database
 
     Usage:
         async def test_strategy_creation(db_context):
@@ -375,6 +376,11 @@ async def db_context(request):
     module_name = request.module.__name__.split(".")[-1]
     worker_id = getattr(request.config, "workerinput", {}).get("workerid", "master")
     db_name = f"test_strategies_{module_name}_{worker_id}"
+
+    # Configure fullon_ohlcv to use our test database
+    from fullon_ohlcv.utils.config import config as ohlcv_config
+    monkeypatch.setattr(ohlcv_config.database, "test_name", db_name)
+    logger.info(f"Configured fullon_ohlcv to use test database: {db_name}")
 
     # Get or create engine (cached at module level)
     engine = await get_or_create_engine(db_name)

@@ -33,20 +33,22 @@ class FeedLoader:
                 print(f"OHLCV: {data.tail()}")
     """
 
-    def __init__(self, strategy: Strategy):
+    def __init__(self, strategy: Strategy, test: bool = False):
         """
         Initialize FeedLoader.
 
         Args:
             strategy: Strategy ORM object with feeds_list relationship loaded
+            test: Whether to use test database (default: False)
         """
         self.strategy = strategy
-        self.feeds: Dict[int, Union[Tick, pd.DataFrame]] = {}
+        self.test = test
+        self.feeds: Dict[int, Union[Tick, pd.DataFrame, None]] = {}
 
         logger.info(
             "FeedLoader initialized",
             str_id=strategy.str_id,
-            num_feeds=len(strategy.feeds_list) if strategy.feeds_list else 0
+            test=test
         )
 
     async def load_feeds(self):
@@ -167,7 +169,7 @@ class FeedLoader:
             async with TimeseriesRepository(
                 exchange=feed.exchange.name,
                 symbol=feed.symbol.symbol,
-                test=False  # Use production database
+                test=self.test  # Use test or production database
             ) as repo:
                 # Define time range (last 500 bars as default)
                 end_time = arrow.utcnow()
@@ -219,7 +221,7 @@ class FeedLoader:
         """
         return self.feeds.get(feed_id)
 
-    def get_all_feeds(self) -> Dict[int, Union[Tick, pd.DataFrame]]:
+    def get_all_feeds(self) -> Dict[int, Union[Tick, pd.DataFrame, None]]:
         """Get all loaded feeds."""
         return self.feeds.copy()
 

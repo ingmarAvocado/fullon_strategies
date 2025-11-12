@@ -1,0 +1,50 @@
+[tool.poetry]
+name = "fullon-strategies"
+version = "0.1.0"
+description = "Dynamic strategy system for Fullon trading platform"
+authors = ["Fullon Team"]
+readme = "README.md"
+packages = [{include = "fullon_strategies", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+pandas = "^2.0.0"
+fullon-log = {git = "ssh://git@github.com/ingmarAvocado/fullon_log.git", rev = "main"}
+fullon-orm = {git = "ssh://git@github.com/ingmarAvocado/fullon_orm.git", rev = "main"}
+fullon-cache = {git = "ssh://git@github.com/ingmarAvocado/fullon_cache.git", rev = "main"}
+fullon-ohlcv = {git = "ssh://git@github.com/ingmarAvocado/fullon_ohlcv.git", rev = "main"}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-asyncio = "^0.23.0"
+pytest-cov = "^4.1.0"
+pytest-xdist = "^3.5.0"
+black = "^24.0.0"
+ruff = "^0.1.0"
+mypy = "^1.8.0"
+uvloop = "^0.21.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py313']
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"

@@ -183,7 +183,7 @@ async def db_context(test_db: str) -> AsyncGenerator[DatabaseContext, None]:
 
 # Factory fixtures for creating test data
 @pytest.fixture
-def strategy_factory(db_context):
+async def strategy_factory(db_context):
     """Factory for creating Strategy ORM objects in the test database."""
     async def _create_strategy(**kwargs):
         # Create a minimal Strategy with defaults
@@ -196,12 +196,14 @@ def strategy_factory(db_context):
         }
         defaults.update(kwargs)
         strategy = Strategy(**defaults)
-        return await db_context.strategies.save(strategy)
+        saved_strategy = await db_context.strategies.save_strategy(strategy)
+        await db_context.commit()
+        return saved_strategy
     return _create_strategy
 
 
 @pytest.fixture
-def feed_factory(db_context):
+async def feed_factory(db_context):
     """Factory for creating Feed ORM objects in the test database."""
     async def _create_feed(**kwargs):
         # Create a minimal Feed with defaults
@@ -215,12 +217,14 @@ def feed_factory(db_context):
         }
         defaults.update(kwargs)
         feed = Feed(**defaults)
-        return await db_context.feeds.save(feed)
+        saved_feed = await db_context.feeds.save_feed(feed)
+        await db_context.commit()
+        return saved_feed
     return _create_feed
 
 
 @pytest.fixture
-def symbol_factory(db_context):
+async def symbol_factory(db_context):
     """Factory for creating Symbol ORM objects in the test database."""
     async def _create_symbol(**kwargs):
         # Create a minimal Symbol with defaults
@@ -232,5 +236,7 @@ def symbol_factory(db_context):
         }
         defaults.update(kwargs)
         symbol = Symbol(**defaults)
-        return await db_context.symbols.save(symbol)
+        saved_symbol = await db_context.symbols.save_symbol(symbol)
+        await db_context.commit()
+        return saved_symbol
     return _create_symbol

@@ -2,6 +2,7 @@
 Test the test infrastructure itself.
 """
 import pytest
+from sqlalchemy import text
 
 
 @pytest.mark.asyncio
@@ -10,7 +11,7 @@ async def test_database_creation(db_context):
     # Just check that we can access the database
     assert db_context is not None
     # Try a simple query
-    result = await db_context.session.execute("SELECT 1")
+    result = await db_context.session.execute(text("SELECT 1"))
     assert result.scalar() == 1
 
 

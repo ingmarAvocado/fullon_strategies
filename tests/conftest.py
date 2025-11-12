@@ -75,7 +75,6 @@ elif example_path and example_path.exists():
 else:
     logger.warning("No .env configuration found")
 
-<<<<<<< HEAD
 # ============================================================================
 # SAFETY CHECKS - Prevent Production Database Access
 # ============================================================================
@@ -113,8 +112,6 @@ _validate_test_environment()
 # Cache for engines per database to reuse across tests
 _engine_cache: Dict[str, AsyncEngine] = {}
 _db_created: Dict[str, bool] = {}
-=======
->>>>>>> origin/fix/issue-16-env-config
 
 # Database configuration from environment
 DB_CONFIG = {

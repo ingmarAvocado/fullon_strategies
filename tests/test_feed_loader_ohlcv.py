@@ -9,10 +9,24 @@ Validates patterns from:
 import pytest
 import pandas as pd
 from fullon_strategies.utils.feed_loader import FeedLoader
-from fullon_orm.models import Strategy
+from fullon_orm.models import Strategy, Feed
 from fullon_log import get_component_logger
 
 logger = get_component_logger("fullon.strategies.tests")
+
+
+async def _refresh_strategy_with_feeds(db_context, str_id: int) -> Strategy:
+    """Helper to refresh strategy with all feed relationships loaded."""
+    from sqlalchemy.orm import selectinload
+    from sqlalchemy import select
+
+    stmt = (
+        select(Strategy)
+        .options(selectinload(Strategy.feeds_list).selectinload(Feed.symbol))
+        .where(Strategy.str_id == str_id)
+    )
+    result = await db_context.session.execute(stmt)
+    return result.scalar_one()
 
 
 class TestFeedLoaderOHLCV:
@@ -43,7 +57,7 @@ class TestFeedLoaderOHLCV:
             - DataFrame has expected number of rows
             - get_feed(feed_id) returns the loaded data
         """
-        # Create test data
+        # Create test data in proper order
         uid = setup_base_data['user'].uid
         exchange = await exchange_factory.create(db_context, uid=uid, name="kraken")
         symbol = await symbol_factory.create(
@@ -52,25 +66,22 @@ class TestFeedLoaderOHLCV:
             symbol_base="BTC",
             symbol_quote="USDT"
         )
-        feed = feed_factory.build(
-            str_id=1,  # Will be updated by strategy_factory
+
+        # Create strategy first
+        strategy = await strategy_factory.create(db_context, bot_id=setup_base_data['bot'].bot_id)
+
+        # Then create feed with proper foreign keys
+        feed = await feed_factory.create(
+            db_context,
+            str_id=strategy.str_id,
             symbol_id=symbol.symbol_id,
             ex_id=exchange.ex_id,
             period="1m",
             order=1
         )
-        # Load relationships on the feed object
-        feed.exchange = exchange
-        feed.symbol = symbol
 
-        strategy = await strategy_factory.create(db_context, bot_id=setup_base_data['bot'].bot_id, feeds=[feed])
-
-        # Load the feeds_list relationship
-        from sqlalchemy.orm import selectinload
-        from sqlalchemy import select
-        stmt = select(Strategy).options(selectinload(Strategy.feeds_list)).where(Strategy.str_id == strategy.str_id)
-        result = await db_context.session.execute(stmt)
-        strategy = result.scalar_one()
+        # Refresh strategy with all feed relationships loaded
+        strategy = await _refresh_strategy_with_feeds(db_context, strategy.str_id)
 
         # Create FeedLoader
         loader = FeedLoader(strategy, test=True)
@@ -117,29 +128,26 @@ class TestFeedLoaderOHLCV:
             - Repository.primary_source is used
             - Repository.last_used_source is logged
         """
-        # Create test data
+        # Create test data in proper order
         uid = setup_base_data['user'].uid
         exchange = await exchange_factory.create(db_context, uid=uid, name="kraken")
-        symbol = await symbol_factory.create(db_context, symbol="ETH/USDT")  # Use different symbol
-        feed = feed_factory.build(
-            str_id=1,  # Will be updated by strategy_factory
+        symbol = await symbol_factory.create(db_context, symbol="ETH/USDT")
+
+        # Create strategy first
+        strategy = await strategy_factory.create(db_context, bot_id=setup_base_data['bot'].bot_id)
+
+        # Then create feed with proper foreign keys
+        feed = await feed_factory.create(
+            db_context,
+            str_id=strategy.str_id,
             symbol_id=symbol.symbol_id,
             ex_id=exchange.ex_id,
             period="1m",
             order=1
         )
-        # Load relationships on the feed object
-        feed.exchange = exchange
-        feed.symbol = symbol
 
-        strategy = await strategy_factory.create(db_context, bot_id=setup_base_data['bot'].bot_id, feeds=[feed])
-
-        # Load the feeds_list relationship
-        from sqlalchemy.orm import selectinload
-        from sqlalchemy import select
-        stmt = select(Strategy).options(selectinload(Strategy.feeds_list)).where(Strategy.str_id == strategy.str_id)
-        result = await db_context.session.execute(stmt)
-        strategy = result.scalar_one()
+        # Refresh strategy with all feed relationships loaded
+        strategy = await _refresh_strategy_with_feeds(db_context, strategy.str_id)
 
         # Load feed
         loader = FeedLoader(strategy, test=True)
@@ -179,29 +187,26 @@ class TestFeedLoaderOHLCV:
             - Repository parameters match Feed attributes
             - Correct data is loaded for the configuration
         """
-        # Create feed with specific configuration
+        # Create test data in proper order
         uid = setup_base_data['user'].uid
         exchange = await exchange_factory.create(db_context, uid=uid, name="kraken")
-        symbol = await symbol_factory.create(db_context, symbol="ADA/USDT")  # Use different symbol
-        feed = feed_factory.build(
-            str_id=1,  # Will be updated by strategy_factory
+        symbol = await symbol_factory.create(db_context, symbol="ADA/USDT")
+
+        # Create strategy first
+        strategy = await strategy_factory.create(db_context, bot_id=setup_base_data['bot'].bot_id)
+
+        # Then create feed with proper foreign keys
+        feed = await feed_factory.create(
+            db_context,
+            str_id=strategy.str_id,
             symbol_id=symbol.symbol_id,
             ex_id=exchange.ex_id,
             period="5m",  # 5-minute period
             order=1
         )
-        # Load relationships on the feed object
-        feed.exchange = exchange
-        feed.symbol = symbol
 
-        strategy = await strategy_factory.create(db_context, bot_id=setup_base_data['bot'].bot_id, feeds=[feed])
-
-        # Load the feeds_list relationship
-        from sqlalchemy.orm import selectinload
-        from sqlalchemy import select
-        stmt = select(Strategy).options(selectinload(Strategy.feeds_list)).where(Strategy.str_id == strategy.str_id)
-        result = await db_context.session.execute(stmt)
-        strategy = result.scalar_one()
+        # Refresh strategy with all feed relationships loaded
+        strategy = await _refresh_strategy_with_feeds(db_context, strategy.str_id)
 
         # Load feed
         loader = FeedLoader(strategy, test=True)
@@ -235,32 +240,26 @@ class TestFeedLoaderOHLCV:
             - Feed data is empty or None
             - Error is logged
         """
-        # Create feed for non-existent symbol
+        # Create test data in proper order
         uid = setup_base_data['user'].uid
         exchange = await exchange_factory.create(db_context, uid=uid, name="kraken")
-        symbol = await symbol_factory.create(
+        symbol = await symbol_factory.create(db_context, symbol="NONE/USD")
+
+        # Create strategy first
+        strategy = await strategy_factory.create(db_context, bot_id=setup_base_data['bot'].bot_id)
+
+        # Then create feed with proper foreign keys
+        feed = await feed_factory.create(
             db_context,
-            symbol="NONE/USD"
-        )
-        feed = feed_factory.build(
-            str_id=1,  # Will be updated by strategy_factory
+            str_id=strategy.str_id,
             symbol_id=symbol.symbol_id,
             ex_id=exchange.ex_id,
             period="1m",
             order=1
         )
-        # Load relationships on the feed object
-        feed.exchange = exchange
-        feed.symbol = symbol
 
-        strategy = await strategy_factory.create(db_context, bot_id=setup_base_data['bot'].bot_id, feeds=[feed])
-
-        # Load the feeds_list relationship
-        from sqlalchemy.orm import selectinload
-        from sqlalchemy import select
-        stmt = select(Strategy).options(selectinload(Strategy.feeds_list)).where(Strategy.str_id == strategy.str_id)
-        result = await db_context.session.execute(stmt)
-        strategy = result.scalar_one()
+        # Refresh strategy with all feed relationships loaded
+        strategy = await _refresh_strategy_with_feeds(db_context, strategy.str_id)
 
         # Load feeds (should not raise exception)
         loader = FeedLoader(strategy, test=True)
@@ -293,25 +292,26 @@ class TestFeedLoaderOHLCV:
             - Load process continues (doesn't crash)
             - Feed data is None or empty
         """
-        # Create test data
+        # Create test data in proper order
         uid = setup_base_data['user'].uid
         exchange = await exchange_factory.create(db_context, uid=uid, name="kraken")
-        symbol = await symbol_factory.create(db_context, symbol="SOL/USDT")  # Use different symbol
-        feed = feed_factory.build(
-            str_id=1,  # Will be updated by strategy_factory
+        symbol = await symbol_factory.create(db_context, symbol="SOL/USDT")
+
+        # Create strategy first
+        strategy = await strategy_factory.create(db_context, bot_id=setup_base_data['bot'].bot_id)
+
+        # Then create feed with proper foreign keys
+        feed = await feed_factory.create(
+            db_context,
+            str_id=strategy.str_id,
             symbol_id=symbol.symbol_id,
             ex_id=exchange.ex_id,
             period="1m",
             order=1
         )
-        strategy = await strategy_factory.create(db_context, bot_id=setup_base_data['bot'].bot_id, feeds=[feed])
 
-        # Load the feeds_list relationship
-        from sqlalchemy.orm import selectinload
-        from sqlalchemy import select
-        stmt = select(Strategy).options(selectinload(Strategy.feeds_list)).where(Strategy.str_id == strategy.str_id)
-        result = await db_context.session.execute(stmt)
-        strategy = result.scalar_one()
+        # Refresh strategy with all feed relationships loaded
+        strategy = await _refresh_strategy_with_feeds(db_context, strategy.str_id)
 
         # Mock repository to raise exception
         async def mock_fetch_error(*args, **kwargs):

@@ -18,8 +18,11 @@ class FeedFactory(BaseFactory):
         **kwargs
     ) -> Feed:
         """Create and persist Feed to database."""
+        from fullon_orm.models import Exchange
+        from sqlalchemy import select
+
         counter = cls.get_next_id()
-        
+
         feed = Feed(
             str_id=str_id,
             symbol_id=symbol_id,
@@ -36,6 +39,12 @@ class FeedFactory(BaseFactory):
         db.session.add(feed)
         await db.session.flush()
         await db.session.refresh(feed)
+
+        # Load the exchange relationship manually since Feed doesn't have an ORM relationship
+        stmt = select(Exchange).where(Exchange.ex_id == ex_id)
+        result = await db.session.execute(stmt)
+        feed.exchange = result.scalar_one()
+
         return feed
 
     @classmethod

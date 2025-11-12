@@ -9,30 +9,52 @@ Follows fullon_master_api testing patterns:
 - Safety checks to prevent production database access
 """
 import os
+import sys
 import uuid
+import asyncio
+import warnings
 from pathlib import Path
 from dotenv import load_dotenv
 
+# ============================================================================
+# UVLOOP SETUP - Must happen BEFORE any imports that might use uvloop
+# ============================================================================
+
+# Set up uvloop properly to avoid deprecation warnings
+try:
+    import uvloop
+    # Use modern event loop policy instead of deprecated install()
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except ImportError:
+    pass  # uvloop not available, use default asyncio
+
+# Suppress the deprecation warning from fullon_orm's uvloop_integration
+# since we've already set up uvloop properly above
+warnings.filterwarnings(
+    "ignore",
+    message="uvloop.install\\(\\) is deprecated",
+    category=DeprecationWarning,
+    module="uvloop"
+)
+
 # Load .env configuration at module level (before any other imports)
 env_path = Path(__file__).parent.parent / ".env"
+example_path = Path(__file__).parent.parent / ".env.example"
 if env_path.exists():
     load_dotenv(env_path)
     print(f"Loaded .env configuration from {env_path}")
 else:
     # Fallback to .env.example for CI/CD
-    example_path = Path(__file__).parent.parent / ".env.example"
     if example_path.exists():
         load_dotenv(example_path)
         print(f"Warning: Using .env.example - create .env for local development")
     else:
         print("Warning: No .env or .env.example found")
 
-import asyncio
 import pytest
 import pytest_asyncio
 from datetime import datetime
 from typing import AsyncGenerator, Dict
-import sys
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine, AsyncSession, async_sessionmaker
@@ -464,6 +486,19 @@ from tests.factories import (
     FeedFactory,
     StrategyFactory
 )
+from tests.fixtures.ohlcv_data import ohlcv_test_data, empty_ohlcv_data
+from tests.fixtures.tick_data import tick_test_data
+
+@pytest.fixture(scope="session")
+def cache_config():
+    """Cache configuration from .env."""
+    return {
+        "host": os.getenv("CACHE_HOST", "localhost"),
+        "port": int(os.getenv("CACHE_PORT", 6379)),
+        "db": int(os.getenv("CACHE_TEST_DB", 15)),
+        "password": os.getenv("CACHE_PASSWORD", ""),
+    }
+
 
 @pytest.fixture
 def exchange_factory():

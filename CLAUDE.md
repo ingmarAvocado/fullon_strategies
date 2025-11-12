@@ -555,6 +555,16 @@ tests/
 3. **Performance monitoring** - Track strategy execution time
 4. **Memory management** - OHLCV DataFrames can get large
 
+### Testing Warnings - RESOLVED ✅
+
+Previously encountered deprecation warnings have been fixed. See [docs/TESTING_KNOWN_ISSUES.md](./docs/TESTING_KNOWN_ISSUES.md) for details.
+
+**Resolution:**
+- **uvloop deprecation warning**: ✅ Fixed by setting up EventLoopPolicy in conftest.py before fullon_orm loads
+- **pytest-asyncio event loop warning**: ✅ Fixed by filtering the cosmetic warning in pytest.ini
+
+All tests run without warnings in both serial and parallel modes.
+
 ## Security Considerations
 
 - Strategies run in bot process - validate strategy code before loading

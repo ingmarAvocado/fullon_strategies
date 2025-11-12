@@ -18,9 +18,9 @@ async def test_database_creation(db_context):
 @pytest.mark.asyncio
 async def test_strategy_factory(strategy_factory):
     """Test that strategy factory creates strategies."""
-    strategy = await strategy_factory(name="Test Strategy", class_name="TestStrategy")
-    assert strategy.name == "Test Strategy"
-    assert strategy.class_name == "TestStrategy"
+    strategy = await strategy_factory(str_id="test_strategy_custom", size=200.0)
+    assert strategy.str_id == "test_strategy_custom"
+    assert strategy.size == 200.0
 
 
 @pytest.mark.asyncio
@@ -34,6 +34,6 @@ async def test_feed_factory(feed_factory):
 @pytest.mark.asyncio
 async def test_symbol_factory(symbol_factory):
     """Test that symbol factory creates symbols."""
-    symbol = await symbol_factory(symbol="ADA/USDT", base_asset="ADA")
+    symbol = await symbol_factory(symbol="ADA/USDT", base="ADA")
     assert symbol.symbol == "ADA/USDT"
-    assert symbol.base_asset == "ADA"
+    assert symbol.base == "ADA"

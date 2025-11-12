@@ -189,7 +189,6 @@ async def strategy_factory(db_context):
         # Create a minimal Strategy with defaults
         defaults = {
             "bot_id": 1,
-            "user_id": 1,
             "class_name": "TestStrategy",
             "name": "Test Strategy",
             "status": "active",
@@ -208,9 +207,8 @@ async def feed_factory(db_context):
     async def _create_feed(**kwargs):
         # Create a minimal Feed with defaults
         defaults = {
-            "strategy_id": 1,
+            "ex_id": 1,
             "symbol": "BTC/USDT",
-            "exchange": "kraken",
             "period": "1m",
             "compression": 1,
             "order": 1,
@@ -230,7 +228,6 @@ async def symbol_factory(db_context):
         # Create a minimal Symbol with defaults
         defaults = {
             "symbol": "BTC/USDT",
-            "exchange": "kraken",
             "base_asset": "BTC",
             "quote_asset": "USDT",
         }

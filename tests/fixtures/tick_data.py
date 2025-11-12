@@ -33,11 +33,7 @@ async def tick_test_data(cache_config) -> AsyncGenerator[dict, None]:
 
     # Assuming TickCache is configured via environment variables, as seen in feed_loader.
     async with TickCache() as cache:
-        # TODO: The correct method to clear the cache is unknown.
-        # 'clear()' and 'redis.flushdb()' were attempted and failed.
-        # As a workaround, the cache is not cleared.
-        # A developer with knowledge of the fullon_cache library will need to complete this.
-        # await cache.clear()  # This line fails
+        await cache.flushdb()
 
         for scenario in test_scenarios:
             symbol = scenario["symbol"]
@@ -59,9 +55,5 @@ async def tick_test_data(cache_config) -> AsyncGenerator[dict, None]:
 
     # Cleanup after test
     async with TickCache() as cache:
-        # TODO: The correct method to clear the cache is unknown.
-        # 'clear()' and 'redis.flushdb()' were attempted and failed.
-        # As a workaround, the cache is not cleared.
-        # A developer with knowledge of the fullon_cache library will need to complete this.
-        # await cache.clear()  # This line fails
+        await cache.flushdb()
         pass

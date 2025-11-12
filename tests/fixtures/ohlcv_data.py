@@ -5,7 +5,8 @@ import pytest_asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import AsyncGenerator
-from fullon_ohlcv.repositories.ohlcv import TimeseriesRepository
+from fullon_ohlcv.repositories.ohlcv import CandleRepository, TimeseriesRepository
+from fullon_ohlcv.models import Candle
 from fullon_log import get_component_logger
 
 logger = get_component_logger("fullon.strategies.tests.fixtures")
@@ -43,11 +44,6 @@ def generate_candle_data(start_time, num_candles, base_price, price_increment, p
 async def ohlcv_test_data(db_context) -> AsyncGenerator[dict, None]:
     """
     Fixture providing pre-populated OHLCV data for multiple symbols and periods.
-
-    NOTE: Table/view initialization is handled by fullon_ohlcv_service.
-    This fixture uses TimeseriesRepository.write_ohlcv() to insert data.
-
-    Returns a dict with keys like 'BTC/USDT_1m' and values as DataFrames.
     """
     data = {}
     test_scenarios = [
@@ -63,11 +59,12 @@ async def ohlcv_test_data(db_context) -> AsyncGenerator[dict, None]:
         period = scenario["period"]
         compression = scenario["compression"]
         
-        async with TimeseriesRepository(
+        async with CandleRepository(
             exchange="kraken",
             symbol=symbol,
             test=True
         ) as repo:
+            await repo.init_symbol()
             start_time = end_time.shift(minutes=-(scenario["num_candles"] * compression))
             df = generate_candle_data(
                 start_time,
@@ -77,12 +74,17 @@ async def ohlcv_test_data(db_context) -> AsyncGenerator[dict, None]:
                 period_minutes=compression
             )
 
-            # TODO: The correct method to write OHLCV data to the repository is unknown.
-            # The issue description mentions a write method in TimeseriesRepository, but it could not be found.
-            # 'populate_ohlcv_from_df' and 'save_ohlcv_df' were attempted and failed.
-            # As a workaround, this fixture generates the data but does not persist it.
-            # A developer with knowledge of the fullon_ohlcv library will need to complete this.
-            # await repo.save_ohlcv_df(df, compression=compression, period=period)  # This line fails
+            candles = [
+                Candle(
+                    timestamp=row['timestamp'],
+                    open=row['open'],
+                    high=row['high'],
+                    low=row['low'],
+                    close=row['close'],
+                    vol=row['volume']
+                ) for _, row in df.iterrows()
+            ]
+            await repo.save_candles(candles)
 
             key = f"{symbol}_{compression}{'m' if period == 'minutes' else 'h'}"
             data[key] = df
@@ -98,11 +100,12 @@ async def empty_ohlcv_data() -> AsyncGenerator[None, None]:
     Fixture providing a repository connection for a symbol with no data.
     This is useful for testing negative paths where data is expected to be absent.
     """
-    async with TimeseriesRepository(
+    async with CandleRepository(
         exchange="kraken",
         symbol="EMPTY/SYMBOL",
         test=True
     ) as repo:
+        await repo.init_symbol()
         # This context provides a valid repository, but no data is populated.
         pass
     yield

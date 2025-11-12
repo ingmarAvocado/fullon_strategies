@@ -24,14 +24,6 @@ async def test_strategy_factory(strategy_factory):
 
 
 @pytest.mark.asyncio
-async def test_feed_factory(feed_factory):
-    """Test that feed factory creates feeds."""
-    feed = await feed_factory(symbol="ETH/USDT", period="5m")
-    assert feed.symbol == "ETH/USDT"
-    assert feed.period == "5m"
-
-
-@pytest.mark.asyncio
 async def test_symbol_factory(symbol_factory):
     """Test that symbol factory creates symbols."""
     symbol = await symbol_factory(symbol="ADA/USDT", base="ADA")

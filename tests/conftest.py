@@ -194,30 +194,10 @@ async def strategy_factory(db_context):
         }
         defaults.update(kwargs)
         strategy = Strategy(**defaults)
-        saved_strategy = await db_context.strategies.save_strategy(strategy)
+        saved_strategy = await db_context.strategies.install_strategy(strategy)
         await db_context.commit()
         return saved_strategy
     return _create_strategy
-
-
-@pytest.fixture
-async def feed_factory(db_context):
-    """Factory for creating Feed ORM objects in the test database."""
-    async def _create_feed(**kwargs):
-        # Create a minimal Feed with defaults
-        defaults = {
-            "str_id": 1,
-            "symbol": "BTC/USDT",
-            "period": "1m",
-            "compression": 1,
-            "order": 1,
-        }
-        defaults.update(kwargs)
-        feed = Feed(**defaults)
-        saved_feed = await db_context.feeds.save_feed(feed)
-        await db_context.commit()
-        return saved_feed
-    return _create_feed
 
 
 @pytest.fixture
@@ -229,11 +209,11 @@ async def symbol_factory(db_context):
             "symbol": "BTC/USDT",
             "base": "BTC",
             "quote": "USDT",
-            "exchange_name": "kraken",
+            "cat_ex_id": 1,
         }
         defaults.update(kwargs)
         symbol = Symbol(**defaults)
-        saved_symbol = await db_context.symbols.save_symbol(symbol)
+        saved_symbol = await db_context.symbols.add_symbol(symbol)
         await db_context.commit()
         return saved_symbol
     return _create_symbol

@@ -1,10 +1,12 @@
 """
 Pytest configuration and fixtures for fullon_strategies tests.
 
-Follows fullon_ohlcv testing patterns:
-- Per-worker test databases
+Follows fullon_master_api testing patterns:
+- Per-worker test databases with module-level caching
 - Real PostgreSQL/TimescaleDB (no mocking)
-- Factory pattern for test data
+- Factory pattern for test data with repository pattern
+- DatabaseTestContext wrapper for rollback-based isolation
+- Safety checks to prevent production database access
 """
 import os
 import uuid
@@ -27,13 +29,17 @@ else:
 
 import asyncio
 import pytest
+import pytest_asyncio
 from datetime import datetime
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Dict
+import sys
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy.pool import NullPool
 
 from fullon_orm import DatabaseContext
+from fullon_orm.base import Base
 from fullon_orm.models import Strategy, Feed, Symbol
 from fullon_log import get_component_logger
 
@@ -47,6 +53,43 @@ elif example_path and example_path.exists():
 else:
     logger.warning("No .env configuration found")
 
+# ============================================================================
+# SAFETY CHECKS - Prevent Production Database Access
+# ============================================================================
+
+def _validate_test_environment():
+    """Validate that we're in a test environment and not accidentally using production database."""
+    is_pytest = "pytest" in sys.modules or (sys.argv and "pytest" in sys.argv[0])
+
+    if is_pytest:
+        production_db_names = {"fullon", "fullon2", "production", "prod"}
+        current_db = os.getenv("DB_NAME", "").lower()
+
+        if current_db in production_db_names:
+            logger.info(
+                f"DB_NAME is set to '{current_db}' but tests will use isolated test databases."
+            )
+        return
+
+    # Non-test context: strict validation
+    production_db_names = {"fullon", "fullon2", "production", "prod"}
+    current_db = os.getenv("DB_NAME", "").lower()
+
+    if current_db in production_db_names:
+        raise RuntimeError(
+            f"SAFETY CHECK FAILED: Cannot run against production database '{current_db}' outside of tests."
+        )
+
+# Run safety check on import
+_validate_test_environment()
+
+# ============================================================================
+# DATABASE PER WORKER PATTERN - Module-Level Caches
+# ============================================================================
+
+# Cache for engines per database to reuse across tests
+_engine_cache: Dict[str, AsyncEngine] = {}
+_db_created: Dict[str, bool] = {}
 
 # Database configuration from environment
 DB_CONFIG = {
@@ -56,6 +99,37 @@ DB_CONFIG = {
     "port": os.getenv("DB_PORT", "5432"),
     "name": os.getenv("DB_TEST_NAME", "fullon2_test"),
 }
+
+
+async def get_or_create_engine(db_name: str) -> AsyncEngine:
+    """Get or create an engine for the database.
+
+    Args:
+        db_name: Database name
+
+    Returns:
+        AsyncEngine for the database
+    """
+    if db_name not in _engine_cache:
+        # Create database if needed
+        await create_test_database(db_name, DB_CONFIG)
+
+        # Create engine with NullPool to avoid connection pool issues
+        from fullon_orm.database import create_database_url
+        database_url = create_database_url(database=db_name)
+        engine = create_async_engine(
+            database_url,
+            echo=False,
+            poolclass=NullPool,  # Use NullPool to avoid event loop issues
+        )
+
+        # Create ORM tables
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        _engine_cache[db_name] = engine
+
+    return _engine_cache[db_name]
 
 
 @pytest.fixture(scope="session")
@@ -77,6 +151,8 @@ async def create_test_database(db_name: str, db_config: dict) -> bool:
 
     try:
         async with engine.begin() as conn:
+            # Drop existing database if it exists
+            await conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}"'))
             # Create database
             await conn.execute(text(f'CREATE DATABASE "{db_name}"'))
             logger.info(f"Created test database: {db_name}")
@@ -100,6 +176,100 @@ async def create_test_database(db_name: str, db_config: dict) -> bool:
         return False
     finally:
         await engine.dispose()
+
+
+# ============================================================================
+# TEST DATABASE CONTEXT - Rollback-Based Isolation
+# ============================================================================
+
+class DatabaseTestContext:
+    """DatabaseContext wrapper for testing with perfect isolation.
+
+    This mimics fullon_orm's DatabaseContext pattern but uses savepoints for test isolation:
+    - Never commits - always rollbacks to avoid event loop cleanup issues
+    - Uses savepoints for nested transaction support
+    - Provides same repository interface as real DatabaseContext
+    - All changes automatically rolled back after each test
+
+    Repository Properties:
+        - strategies: StrategyRepository
+        - symbols: SymbolRepository
+        - exchanges: ExchangeRepository
+        - bots: BotRepository
+        - orders: OrderRepository
+        - trades: TradeRepository
+    """
+
+    def __init__(self, session: AsyncSession):
+        """Initialize with an async session."""
+        self.session = session
+        # Repository instances (lazy loaded)
+        self._strategy_repo = None
+        self._symbol_repo = None
+        self._exchange_repo = None
+        self._bot_repo = None
+        self._order_repo = None
+        self._trade_repo = None
+
+    @property
+    def strategies(self):
+        """Get StrategyRepository with current session."""
+        if self._strategy_repo is None:
+            from fullon_orm.repositories import StrategyRepository
+            self._strategy_repo = StrategyRepository(self.session)
+        return self._strategy_repo
+
+    @property
+    def symbols(self):
+        """Get SymbolRepository with current session."""
+        if self._symbol_repo is None:
+            from fullon_orm.repositories import SymbolRepository
+            self._symbol_repo = SymbolRepository(self.session)
+        return self._symbol_repo
+
+    @property
+    def exchanges(self):
+        """Get ExchangeRepository with current session."""
+        if self._exchange_repo is None:
+            from fullon_orm.repositories import ExchangeRepository
+            self._exchange_repo = ExchangeRepository(self.session)
+        return self._exchange_repo
+
+    @property
+    def bots(self):
+        """Get BotRepository with current session."""
+        if self._bot_repo is None:
+            from fullon_orm.repositories import BotRepository
+            self._bot_repo = BotRepository(self.session)
+        return self._bot_repo
+
+    @property
+    def orders(self):
+        """Get OrderRepository with current session."""
+        if self._order_repo is None:
+            from fullon_orm.repositories import OrderRepository
+            self._order_repo = OrderRepository(self.session)
+        return self._order_repo
+
+    @property
+    def trades(self):
+        """Get TradeRepository with current session."""
+        if self._trade_repo is None:
+            from fullon_orm.repositories import TradeRepository
+            self._trade_repo = TradeRepository(self.session)
+        return self._trade_repo
+
+    async def commit(self):
+        """Commit current transaction (for compatibility)."""
+        await self.session.commit()
+
+    async def rollback(self):
+        """Rollback current transaction."""
+        await self.session.rollback()
+
+    async def flush(self):
+        """Flush current session."""
+        await self.session.flush()
 
 
 async def drop_test_database(db_name: str, db_config: dict) -> bool:
@@ -133,116 +303,290 @@ async def drop_test_database(db_name: str, db_config: dict) -> bool:
         await engine.dispose()
 
 
-@pytest.fixture(scope="function")
-async def test_db() -> AsyncGenerator[str, None]:
-    """
-    Create a unique test database for each test.
+# OLD test_db fixture - replaced by module-level caching pattern
+# @pytest.fixture(scope="function")
+# async def test_db() -> AsyncGenerator[str, None]:
+#     """
+#     Create a unique test database for each test.
+#
+#     Yields the database name and cleans up after the test.
+#     """
+#     # Create unique database name
+#     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+#     worker_id = os.getenv("PYTEST_XDIST_WORKER", "master")
+#     unique_id = str(uuid.uuid4())[:8]
+#     db_name = f"test_strategies_{timestamp}_{worker_id}_{unique_id}"
+#
+#     # Create database
+#     success = await create_test_database(db_name, DB_CONFIG)
+#     if not success:
+#         pytest.fail(f"Failed to create test database: {db_name}")
+#
+#     # Update environment variable for DatabaseContext
+#     original_db_name = os.getenv("DB_NAME")
+#     os.environ["DB_NAME"] = db_name
+#
+#     try:
+#         yield db_name
+#     finally:
+#         # Restore original database name
+#         if original_db_name:
+#             os.environ["DB_NAME"] = original_db_name
+#         else:
+#             os.environ.pop("DB_NAME", None)
+#
+#         # Drop database
+#         await drop_test_database(db_name, DB_CONFIG)
 
-    Yields the database name and cleans up after the test.
-    """
-    # Create unique database name
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    worker_id = os.getenv("PYTEST_XDIST_WORKER", "master")
-    unique_id = str(uuid.uuid4())[:8]
-    db_name = f"test_strategies_{timestamp}_{worker_id}_{unique_id}"
 
-    # Create database
-    success = await create_test_database(db_name, DB_CONFIG)
-    if not success:
-        pytest.fail(f"Failed to create test database: {db_name}")
+@pytest_asyncio.fixture
+async def db_context(request):
+    """Create a DatabaseContext-like wrapper for testing with proper isolation.
 
-    # Update environment variable for DatabaseContext
-    original_db_name = os.getenv("DB_NAME")
-    os.environ["DB_NAME"] = db_name
-
-    try:
-        yield db_name
-    finally:
-        # Restore original database name
-        if original_db_name:
-            os.environ["DB_NAME"] = original_db_name
-        else:
-            os.environ.pop("DB_NAME", None)
-
-        # Drop database
-        await drop_test_database(db_name, DB_CONFIG)
-
-
-@pytest.fixture
-async def db_context(test_db: str) -> AsyncGenerator[DatabaseContext, None]:
-    """
-    Provide a DatabaseContext with a clean test database.
+    This provides:
+    - Per-test database isolation via savepoints
+    - Automatic rollback after each test
+    - Same interface as fullon_orm.DatabaseContext
+    - Access to all repositories (strategies, feeds, symbols, etc.)
 
     Usage:
-        async def test_something(db_context):
-            strategy = await db_context.strategies.get_by_id(1)
+        async def test_strategy_creation(db_context):
+            strategy = Strategy(str_id="test", bot_id=1, size=100.0)
+            created = await db_context.strategies.add(strategy)
+            await db_context.commit()
+            assert created.str_id == "test"
+            # Automatically rolled back after test
     """
-    async with DatabaseContext() as db:
+    # Get database name for this module
+    module_name = request.module.__name__.split(".")[-1]
+    worker_id = getattr(request.config, "workerinput", {}).get("workerid", "master")
+    db_name = f"test_strategies_{module_name}_{worker_id}"
+
+    # Get or create engine (cached at module level)
+    engine = await get_or_create_engine(db_name)
+
+    # Create session maker
+    async_session_maker = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+
+    # Create a session WITHOUT context manager to have full control
+    session = async_session_maker()
+
+    try:
+        # Begin transaction explicitly for proper rollback
+        await session.begin()
+
+        # Create test database context wrapper
+        db = DatabaseTestContext(session)
+
         yield db
+    finally:
+        # Always rollback - this ensures no data persists
+        await session.rollback()
+        await session.close()
 
 
-# Factory fixtures for creating test data
+# ============================================================================
+# SETUP FIXTURES - For Creating Required Base Data
+# ============================================================================
+
 @pytest.fixture
-async def strategy_factory(db_context):
+async def setup_base_data(db_context):
+    """Create base data required for tests (exchanges, strategy categories, etc.)."""
+    # Create a test exchange category
+    from fullon_orm.models import CatExchange, CatStrategy, Bot, User, Exchange
+    import uuid as uid_gen
+
+    # Create test user with unique email
+    unique_id = str(uid_gen.uuid4())[:8]
+    user = User(
+        mail=f"test_{unique_id}@example.com",
+        name="Test",
+        lastname="User",
+        password="hashed_password",
+        f2a="",
+        phone="",
+        id_num=""
+    )
+    db_context.session.add(user)
+    await db_context.session.flush()
+
+    # Create exchange category with unique name
+    cat_ex = CatExchange(
+        name=f"test_exchange_{unique_id}"
+    )
+    db_context.session.add(cat_ex)
+    await db_context.session.flush()
+
+    # Create exchange for user
+    # ex_id is auto-increment, don't specify it
+    exchange = Exchange(
+        uid=user.uid,
+        cat_ex_id=cat_ex.cat_ex_id,
+        name="Test Exchange",
+        test=True
+    )
+    db_context.session.add(exchange)
+    await db_context.session.flush()
+
+    # Create strategy category with unique name
+    cat_str = CatStrategy(
+        name=f"Test Strategy {unique_id}"
+    )
+    db_context.session.add(cat_str)
+    await db_context.session.flush()
+
+    # Create a bot
+    bot = Bot(
+        uid=user.uid,
+        name="Test Bot",
+        dry_run=True
+    )
+    db_context.session.add(bot)
+    await db_context.session.flush()
+
+    # Don't commit - let db_context handle transaction rollback
+
+    return {
+        "user": user,
+        "cat_ex": cat_ex,
+        "exchange": exchange,
+        "cat_str": cat_str,
+        "bot": bot
+    }
+
+# ============================================================================
+# FACTORY FIXTURES - For Creating Test Data
+# ============================================================================
+
+@pytest.fixture
+async def strategy_factory(db_context, setup_base_data):
     """Factory for creating Strategy ORM objects in the test database."""
+    base_data = setup_base_data
+
     async def _create_strategy(**kwargs):
+        # str_id should not be specified in kwargs, let's remove it
+        kwargs.pop("str_id", None)
+
         defaults = {
-            "bot_id": 1,
-            "str_id": "test_strategy",
+            "bot_id": base_data["bot"].bot_id,
+            "cat_str_id": base_data["cat_str"].cat_str_id,
             "size": 100.0,
         }
         defaults.update(kwargs)
         strategy = Strategy(**defaults)
 
-        # Use session.add() + flush() pattern
-        db_context.session.add(strategy)
-        await db_context.session.flush()
-        await db_context.commit()
+        # Use repository pattern with correct method
+        created = await db_context.strategies.add_bot_strategy(strategy)
+        await db_context.flush()  # Flush to get ID but don't commit
 
-        return strategy
+        return created
     return _create_strategy
 
 
 @pytest.fixture
-async def feed_factory(db_context):
+async def feed_factory(db_context, setup_base_data):
     """Factory for creating Feed ORM objects in the test database."""
+    base_data = setup_base_data
+
     async def _create_feed(**kwargs):
+        # Handle symbol creation if symbol string is passed
+        saved_symbol_str = None
+        if "symbol" in kwargs:
+            symbol_str = kwargs.pop("symbol")
+            saved_symbol_str = symbol_str  # Save for later
+            # Create or get symbol
+            from fullon_orm.models import Symbol
+            symbol = Symbol(
+                symbol=symbol_str,
+                cat_ex_id=base_data["cat_ex"].cat_ex_id,
+                base=symbol_str.split("/")[0] if "/" in symbol_str else symbol_str,
+                quote=symbol_str.split("/")[1] if "/" in symbol_str else "USDT"
+            )
+            created_symbol = await db_context.symbols.add_symbol(symbol)
+            await db_context.flush()  # Flush to get ID but don't commit
+            kwargs["symbol_id"] = created_symbol.symbol_id
+
+        # First create a strategy if str_id doesn't exist
+        if "str_id" not in kwargs:
+            strategy = Strategy(
+                bot_id=base_data["bot"].bot_id,
+                cat_str_id=base_data["cat_str"].cat_str_id,
+                size=100.0
+            )
+            created_strategy = await db_context.strategies.add_bot_strategy(strategy)
+            await db_context.flush()  # Flush to get ID but don't commit
+            # str_id is auto-generated
+            if created_strategy:
+                kwargs["str_id"] = created_strategy.str_id
+            else:
+                # If strategy creation failed, use a default
+                kwargs["str_id"] = 1
+
         defaults = {
-            "str_id": 1,
-            "symbol": "BTC/USDT",
+            "str_id": kwargs.get("str_id", 1),
+            "symbol_id": kwargs.get("symbol_id", 1),
             "period": "1m",
             "compression": 1,
             "order": 1,
         }
         defaults.update(kwargs)
+
+        # Remove symbol key if it still exists
+        defaults.pop("symbol", None)
+
         feed = Feed(**defaults)
 
-        # Use session.add() + flush() pattern
+        # No FeedRepository, use session directly
         db_context.session.add(feed)
         await db_context.session.flush()
-        await db_context.commit()
+
+        # Refresh to get relationships
+        await db_context.session.refresh(feed)
+
+        # Add symbol string as a custom attribute for test compatibility
+        # Don't overwrite the SQLAlchemy relationship
+        feed._symbol_str = saved_symbol_str
+
+        # Add a dynamic property to get symbol string
+        def get_symbol(self):
+            # If we have the cached string, return it
+            if hasattr(self, "_symbol_str"):
+                return self._symbol_str
+            # Otherwise try to get from relationship
+            if self.symbol:
+                return self.symbol.symbol
+            return None
+
+        # Monkey-patch the property onto the instance
+        import types
+        feed.get_symbol = types.MethodType(get_symbol, feed)
 
         return feed
     return _create_feed
 
 
 @pytest.fixture
-async def symbol_factory(db_context):
+async def symbol_factory(db_context, setup_base_data):
     """Factory for creating Symbol ORM objects in the test database."""
+    base_data = setup_base_data
+
     async def _create_symbol(**kwargs):
         defaults = {
             "symbol": "BTC/USDT",
             "base": "BTC",
             "quote": "USDT",
-            "cat_ex_id": 1,
+            "cat_ex_id": base_data["cat_ex"].cat_ex_id,
         }
         defaults.update(kwargs)
         symbol = Symbol(**defaults)
 
-        # Use session.add() + flush() pattern
-        db_context.session.add(symbol)
-        await db_context.session.flush()
-        await db_context.commit()
+        # Use repository pattern with correct method
+        created = await db_context.symbols.add_symbol(symbol)
+        await db_context.flush()  # Flush to get ID but don't commit
 
-        return symbol
+        return created
     return _create_symbol

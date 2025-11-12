@@ -132,14 +132,6 @@ async def get_or_create_engine(db_name: str) -> AsyncEngine:
     return _engine_cache[db_name]
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create event loop for async tests."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
 async def create_test_database(db_name: str, db_config: dict) -> bool:
     """Create a test database with TimescaleDB extension."""
     admin_url = (

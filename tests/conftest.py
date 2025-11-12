@@ -188,10 +188,8 @@ async def strategy_factory(db_context):
     async def _create_strategy(**kwargs):
         defaults = {
             "bot_id": 1,
-            "user_id": 1,
-            "class_name": "TestStrategy",
-            "name": "Test Strategy",
-            "status": "active",
+            "str_id": "test_strategy",
+            "size": 100.0,
         }
         defaults.update(kwargs)
         strategy = Strategy(**defaults)
@@ -210,9 +208,8 @@ async def feed_factory(db_context):
     """Factory for creating Feed ORM objects in the test database."""
     async def _create_feed(**kwargs):
         defaults = {
-            "strategy_id": 1,
+            "str_id": 1,
             "symbol": "BTC/USDT",
-            "exchange": "kraken",
             "period": "1m",
             "compression": 1,
             "order": 1,
@@ -235,8 +232,9 @@ async def symbol_factory(db_context):
     async def _create_symbol(**kwargs):
         defaults = {
             "symbol": "BTC/USDT",
-            "base_asset": "BTC",
-            "quote_asset": "USDT",
+            "base": "BTC",
+            "quote": "USDT",
+            "cat_ex_id": 1,
         }
         defaults.update(kwargs)
         symbol = Symbol(**defaults)

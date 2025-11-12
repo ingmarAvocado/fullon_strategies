@@ -15,12 +15,12 @@ from dotenv import load_dotenv
 
 # Load .env configuration at module level (before any other imports)
 env_path = Path(__file__).parent.parent / ".env"
+example_path = Path(__file__).parent.parent / ".env.example"
 if env_path.exists():
     load_dotenv(env_path)
     print(f"Loaded .env configuration from {env_path}")
 else:
     # Fallback to .env.example for CI/CD
-    example_path = Path(__file__).parent.parent / ".env.example"
     if example_path.exists():
         load_dotenv(example_path)
         print(f"Warning: Using .env.example - create .env for local development")
@@ -464,6 +464,19 @@ from tests.factories import (
     FeedFactory,
     StrategyFactory
 )
+from tests.fixtures.ohlcv_data import ohlcv_test_data, empty_ohlcv_data
+from tests.fixtures.tick_data import tick_test_data
+
+@pytest.fixture(scope="session")
+def cache_config():
+    """Cache configuration from .env."""
+    return {
+        "host": os.getenv("CACHE_HOST", "localhost"),
+        "port": int(os.getenv("CACHE_PORT", 6379)),
+        "db": int(os.getenv("CACHE_TEST_DB", 15)),
+        "password": os.getenv("CACHE_PASSWORD", ""),
+    }
+
 
 @pytest.fixture
 def exchange_factory():

@@ -454,131 +454,33 @@ async def setup_base_data(db_context):
 # FACTORY FIXTURES - For Creating Test Data
 # ============================================================================
 
-@pytest.fixture
-async def strategy_factory(db_context, setup_base_data):
-    """Factory for creating Strategy ORM objects in the test database."""
-    base_data = setup_base_data
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-    async def _create_strategy(**kwargs):
-        # str_id should not be specified in kwargs, let's remove it
-        kwargs.pop("str_id", None)
-
-        defaults = {
-            "bot_id": base_data["bot"].bot_id,
-            "cat_str_id": base_data["cat_str"].cat_str_id,
-            "size": 100.0,
-        }
-        defaults.update(kwargs)
-        strategy = Strategy(**defaults)
-
-        # Use repository pattern with correct method
-        created = await db_context.strategies.add_bot_strategy(strategy)
-        await db_context.flush()  # Flush to get ID but don't commit
-
-        return created
-    return _create_strategy
-
+from tests.factories import (
+    ExchangeFactory,
+    SymbolFactory,
+    FeedFactory,
+    StrategyFactory
+)
 
 @pytest.fixture
-async def feed_factory(db_context, setup_base_data):
-    """Factory for creating Feed ORM objects in the test database."""
-    base_data = setup_base_data
-
-    async def _create_feed(**kwargs):
-        # Handle symbol creation if symbol string is passed
-        saved_symbol_str = None
-        if "symbol" in kwargs:
-            symbol_str = kwargs.pop("symbol")
-            saved_symbol_str = symbol_str  # Save for later
-            # Create or get symbol
-            from fullon_orm.models import Symbol
-            symbol = Symbol(
-                symbol=symbol_str,
-                cat_ex_id=base_data["cat_ex"].cat_ex_id,
-                base=symbol_str.split("/")[0] if "/" in symbol_str else symbol_str,
-                quote=symbol_str.split("/")[1] if "/" in symbol_str else "USDT"
-            )
-            created_symbol = await db_context.symbols.add_symbol(symbol)
-            await db_context.flush()  # Flush to get ID but don't commit
-            kwargs["symbol_id"] = created_symbol.symbol_id
-
-        # First create a strategy if str_id doesn't exist
-        if "str_id" not in kwargs:
-            strategy = Strategy(
-                bot_id=base_data["bot"].bot_id,
-                cat_str_id=base_data["cat_str"].cat_str_id,
-                size=100.0
-            )
-            created_strategy = await db_context.strategies.add_bot_strategy(strategy)
-            await db_context.flush()  # Flush to get ID but don't commit
-            # str_id is auto-generated
-            if created_strategy:
-                kwargs["str_id"] = created_strategy.str_id
-            else:
-                # If strategy creation failed, use a default
-                kwargs["str_id"] = 1
-
-        defaults = {
-            "str_id": kwargs.get("str_id", 1),
-            "symbol_id": kwargs.get("symbol_id", 1),
-            "period": "1m",
-            "compression": 1,
-            "order": 1,
-        }
-        defaults.update(kwargs)
-
-        # Remove symbol key if it still exists
-        defaults.pop("symbol", None)
-
-        feed = Feed(**defaults)
-
-        # No FeedRepository, use session directly
-        db_context.session.add(feed)
-        await db_context.session.flush()
-
-        # Refresh to get relationships
-        await db_context.session.refresh(feed)
-
-        # Add symbol string as a custom attribute for test compatibility
-        # Don't overwrite the SQLAlchemy relationship
-        feed._symbol_str = saved_symbol_str
-
-        # Add a dynamic property to get symbol string
-        def get_symbol(self):
-            # If we have the cached string, return it
-            if hasattr(self, "_symbol_str"):
-                return self._symbol_str
-            # Otherwise try to get from relationship
-            if self.symbol:
-                return self.symbol.symbol
-            return None
-
-        # Monkey-patch the property onto the instance
-        import types
-        feed.get_symbol = types.MethodType(get_symbol, feed)
-
-        return feed
-    return _create_feed
-
+def exchange_factory():
+    """Factory for creating Exchange ORM objects."""
+    return ExchangeFactory
 
 @pytest.fixture
-async def symbol_factory(db_context, setup_base_data):
-    """Factory for creating Symbol ORM objects in the test database."""
-    base_data = setup_base_data
+def symbol_factory():
+    """Factory for creating Symbol ORM objects."""
+    return SymbolFactory
 
-    async def _create_symbol(**kwargs):
-        defaults = {
-            "symbol": "BTC/USDT",
-            "base": "BTC",
-            "quote": "USDT",
-            "cat_ex_id": base_data["cat_ex"].cat_ex_id,
-        }
-        defaults.update(kwargs)
-        symbol = Symbol(**defaults)
+@pytest.fixture
+def feed_factory():
+    """Factory for creating Feed ORM objects."""
+    return FeedFactory
 
-        # Use repository pattern with correct method
-        created = await db_context.symbols.add_symbol(symbol)
-        await db_context.flush()  # Flush to get ID but don't commit
-
-        return created
-    return _create_symbol
+@pytest.fixture
+def strategy_factory():
+    """Factory for creating Strategy ORM objects."""
+    return StrategyFactory

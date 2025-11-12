@@ -31,7 +31,7 @@ async def tick_test_data(cache_config) -> AsyncGenerator[dict, None]:
         {"symbol": "ETH/USDT", "num_ticks": 20, "base_price": 3010},
     ]
 
-    # Assuming TickCache is configured via environment variables, as seen in feed_loader.
+    # Populate cache with test data
     async with TickCache() as cache:
         await cache.flushdb()
 
@@ -56,4 +56,3 @@ async def tick_test_data(cache_config) -> AsyncGenerator[dict, None]:
     # Cleanup after test
     async with TickCache() as cache:
         await cache.flushdb()
-        pass

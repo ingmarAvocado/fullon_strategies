@@ -9,9 +9,33 @@ Follows fullon_master_api testing patterns:
 - Safety checks to prevent production database access
 """
 import os
+import sys
 import uuid
+import asyncio
+import warnings
 from pathlib import Path
 from dotenv import load_dotenv
+
+# ============================================================================
+# UVLOOP SETUP - Must happen BEFORE any imports that might use uvloop
+# ============================================================================
+
+# Set up uvloop properly to avoid deprecation warnings
+try:
+    import uvloop
+    # Use modern event loop policy instead of deprecated install()
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except ImportError:
+    pass  # uvloop not available, use default asyncio
+
+# Suppress the deprecation warning from fullon_orm's uvloop_integration
+# since we've already set up uvloop properly above
+warnings.filterwarnings(
+    "ignore",
+    message="uvloop.install\\(\\) is deprecated",
+    category=DeprecationWarning,
+    module="uvloop"
+)
 
 # Load .env configuration at module level (before any other imports)
 env_path = Path(__file__).parent.parent / ".env"
@@ -27,12 +51,10 @@ else:
     else:
         print("Warning: No .env or .env.example found")
 
-import asyncio
 import pytest
 import pytest_asyncio
 from datetime import datetime
 from typing import AsyncGenerator, Dict
-import sys
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine, AsyncSession, async_sessionmaker

@@ -186,34 +186,65 @@ async def db_context(test_db: str) -> AsyncGenerator[DatabaseContext, None]:
 async def strategy_factory(db_context):
     """Factory for creating Strategy ORM objects in the test database."""
     async def _create_strategy(**kwargs):
-        # Create a minimal Strategy with defaults
         defaults = {
             "bot_id": 1,
-            "str_id": "test_strategy",
-            "size": 100.0,
+            "user_id": 1,
+            "class_name": "TestStrategy",
+            "name": "Test Strategy",
+            "status": "active",
         }
         defaults.update(kwargs)
         strategy = Strategy(**defaults)
-        saved_strategy = await db_context.strategies.install_strategy(strategy)
+
+        # Use session.add() + flush() pattern
+        db_context.session.add(strategy)
+        await db_context.session.flush()
         await db_context.commit()
-        return saved_strategy
+
+        return strategy
     return _create_strategy
+
+
+@pytest.fixture
+async def feed_factory(db_context):
+    """Factory for creating Feed ORM objects in the test database."""
+    async def _create_feed(**kwargs):
+        defaults = {
+            "strategy_id": 1,
+            "symbol": "BTC/USDT",
+            "exchange": "kraken",
+            "period": "1m",
+            "compression": 1,
+            "order": 1,
+        }
+        defaults.update(kwargs)
+        feed = Feed(**defaults)
+
+        # Use session.add() + flush() pattern
+        db_context.session.add(feed)
+        await db_context.session.flush()
+        await db_context.commit()
+
+        return feed
+    return _create_feed
 
 
 @pytest.fixture
 async def symbol_factory(db_context):
     """Factory for creating Symbol ORM objects in the test database."""
     async def _create_symbol(**kwargs):
-        # Create a minimal Symbol with defaults
         defaults = {
             "symbol": "BTC/USDT",
-            "base": "BTC",
-            "quote": "USDT",
-            "cat_ex_id": 1,
+            "base_asset": "BTC",
+            "quote_asset": "USDT",
         }
         defaults.update(kwargs)
         symbol = Symbol(**defaults)
-        saved_symbol = await db_context.symbols.add_symbol(symbol)
+
+        # Use session.add() + flush() pattern
+        db_context.session.add(symbol)
+        await db_context.session.flush()
         await db_context.commit()
-        return saved_symbol
+
+        return symbol
     return _create_symbol

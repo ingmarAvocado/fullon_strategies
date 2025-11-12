@@ -18,14 +18,22 @@ async def test_database_creation(db_context):
 @pytest.mark.asyncio
 async def test_strategy_factory(strategy_factory):
     """Test that strategy factory creates strategies."""
-    strategy = await strategy_factory(str_id="test_strategy_custom", size=200.0)
-    assert strategy.str_id == "test_strategy_custom"
-    assert strategy.size == 200.0
+    strategy = await strategy_factory(name="Custom Strategy", class_name="CustomStrategy")
+    assert strategy.name == "Custom Strategy"
+    assert strategy.class_name == "CustomStrategy"
+
+
+@pytest.mark.asyncio
+async def test_feed_factory(feed_factory):
+    """Test that feed factory creates feeds."""
+    feed = await feed_factory(symbol="ETH/USDT", period="5m")
+    assert feed.symbol == "ETH/USDT"
+    assert feed.period == "5m"
 
 
 @pytest.mark.asyncio
 async def test_symbol_factory(symbol_factory):
     """Test that symbol factory creates symbols."""
-    symbol = await symbol_factory(symbol="ADA/USDT", base="ADA")
+    symbol = await symbol_factory(symbol="ADA/USDT", base_asset="ADA")
     assert symbol.symbol == "ADA/USDT"
-    assert symbol.base == "ADA"
+    assert symbol.base_asset == "ADA"

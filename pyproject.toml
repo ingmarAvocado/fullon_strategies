@@ -9,6 +9,7 @@ packages = [{include = "fullon_strategies", from = "src"}]
 [tool.poetry.dependencies]
 python = "^3.13"
 pandas = "^2.0.0"
+python-dotenv = "^1.0.0"
 fullon-log = {git = "ssh://git@github.com/ingmarAvocado/fullon_log.git", rev = "main"}
 fullon-orm = {git = "ssh://git@github.com/ingmarAvocado/fullon_orm.git", rev = "main"}
 fullon-cache = {git = "ssh://git@github.com/ingmarAvocado/fullon_cache.git", rev = "main"}

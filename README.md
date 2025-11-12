@@ -20,6 +20,62 @@ Dynamic strategy system for the Fullon trading platform.
 poetry install
 ```
 
+## Environment Setup
+
+### 1. Configure Environment Variables
+
+Copy the example environment file and customize it with your settings:
+
+```bash
+cp .env.example .env
+```
+
+### 2. Edit Configuration
+
+Edit `.env` with your specific configuration:
+
+**Database Settings:**
+- `DB_HOST` - PostgreSQL host (default: localhost)
+- `DB_PORT` - PostgreSQL port (default: 5432)
+- `DB_PASSWORD` - Database password (required)
+
+**Cache Settings:**
+- `CACHE_HOST` - Redis host (default: localhost)
+- `CACHE_PORT` - Redis port (default: 6379)
+- `CACHE_PASSWORD` - Redis password (if authentication enabled)
+
+**Google Cloud (optional):**
+- `GOOGLE_SECRET` - GCP secret name for API keys
+- `GOOGLE_CREDENTIALS` - Path to service account JSON
+
+### 3. Verify Installation
+
+After configuring your environment:
+
+```bash
+# Install dependencies including python-dotenv
+poetry install
+
+# Run tests to verify setup
+pytest
+
+# Or run with verbose output
+pytest -v
+```
+
+### Environment Files
+
+- `.env` - Your local configuration (never commit this)
+- `.env.example` - Template with all variables (safe to commit)
+- `tests/.env.test` - CI/CD configuration template
+
+### Important Security Notes
+
+- **Never commit `.env` files** containing real passwords or secrets
+- The `.gitignore` is configured to exclude `.env` files automatically
+- Use `.env.example` as a template for team members
+- Store production secrets in a secure vault or secret manager
+
 ## Dependencies
 
 **Required:**
